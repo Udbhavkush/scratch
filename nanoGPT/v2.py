@@ -92,7 +92,7 @@ class BigramLanguageModel(nn.Module):
         return idx
     
     
-model = BigramLanguageModel(vocab_size)
+model = BigramLanguageModel()
 m = model.to(device)
 optimizer = torch.optim.AdamW(m.parameters(), lr=learning_rate)
 
