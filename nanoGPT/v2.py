@@ -91,7 +91,7 @@ class BigramLanguageModel(nn.Module):
         # idx and targets are both (B, T) tensor of integers
         B, T = idx.shape
         tok_embd = self.token_embedding_table(idx) # (B, T, C)
-        pos_embd = self.position_embedding_table(torch.arange(T, device=device)) # T, C
+        pos_embd = self.position_embedding_table(torch.arange(T, device=device)) # T, C. So, for each index, I am getting an embedding that has the information of the position
         x = tok_embd + pos_embd # now x has both the information of identity and position. Although not much useful for bigram but conceptually important
         x = self.sa_head(x) # self attention head (B, T, C)
         logits = self.lm_head(x) # (B, T, vocab_size)
