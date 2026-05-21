@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import os
 torch.manual_seed(1337)
 
 # Defining hyperparameters
@@ -14,7 +15,8 @@ eval_iters = 200
 n_embd = 32
 
 # reading the data
-with open('input.txt', 'r', encoding='utf-8') as f:
+base_dir = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(base_dir, 'input.txt'), 'r', encoding='utf-8') as f:
     text = f.read()
 
 chars = sorted(list(set(text)))
@@ -65,9 +67,9 @@ class Head(nn.Module):
         
         k = self.key(x)  # B, T, C
         q = self.key(x)  # B, T, C
-        
+        d = k.shape[-1]
         # dot product or basically matrix multiplication
-        wei = q @ k.transpose(-2, -1) * C**-0.5  # B, T, T
+        wei = q @ k.transpose(-2, -1) * d**-0.5  # B, T, T
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))  # B, T, T
         wei = F.softmax(wei, dim=-1)
         # perform weighted aggregation of the values
