@@ -6,9 +6,9 @@ torch.manual_seed(1337)
 # Defining hyperparameters
 batch_size = 32
 block_size = 8
-max_iters = 3000
+max_iters = 5000
 eval_interval = 300
-learning_rate = 1e-2
+learning_rate = 1e-3
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 eval_iters = 200
 n_embd = 32
@@ -52,19 +52,47 @@ def estimate_loss():
     return out
     
 
+class Head(nn.Module):
+    def __init__(self, head_size):
+        super().__init__()
+        self.key = nn.Linear(n_embd, head_size, bias=False)
+        self.query = nn.Linear(n_embd, head_size, bias=False)
+        self.value = nn.Linear(n_embd, head_size, bias=False)
+        self.register_buffer('tril', torch.tril(torch.ones((block_size, block_size)))) # we user register_buffer when we don't want to add a class variable as a parameter of the model
+    
+    def forward(self, x):
+        B, T, C = x.shape
+        
+        k = self.key(x)  # B, T, C
+        q = self.key(x)  # B, T, C
+        
+        # dot product or basically matrix multiplication
+        wei = q @ k.transpose(-2, -1) * C**-0.5  # B, T, T
+        wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))  # B, T, T
+        wei = F.softmax(wei, dim=-1)
+        # perform weighted aggregation of the values
+        v = self.value(x)
+        out = wei @ v
+        return out
 
 class BigramLanguageModel(nn.Module):
     
     def __init__(self):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd) # we are adding an intermediate layer instead of directly taking logits from the embedding table
+        self.position_embedding_table = nn.Embedding(block_size, n_embd) # so each block or each time component get its own positional embedding
+        self.sa_head = Head(n_embd)
         self.lm_head = nn.Linear(n_embd, vocab_size) # adding a linear layer
         
     
     def forward(self, idx, targets=None):
         # idx and targets are both (B, T) tensor of integers
+        B, T = idx.shape
         tok_embd = self.token_embedding_table(idx) # (B, T, C)
-        logits = self.lm_head(tok_embd) # (B, T, vocab_size)
+        pos_embd = self.position_embedding_table(torch.arange(T, device=device)) # T, C
+        x = tok_embd + pos_embd # now x has both the information of identity and position. Although not much useful for bigram but conceptually important
+        x = self.sa_head(x) # self attention head (B, T, C)
+        logits = self.lm_head(x) # (B, T, vocab_size)
         if targets is None:
             loss = None
         else:
@@ -79,7 +107,9 @@ class BigramLanguageModel(nn.Module):
         # idx is (B, T) array of indices in the current context
         # get the predictions
         for _ in range(max_new_tokens):
-            logits, loss = self(idx)
+            # crop idx to the last bock_size tokens
+            idx_cond = idx[:, -block_size:]
+            logits, loss = self(idx_cond)
             # focus only on the last time step (cuz bigram model)
             logits = logits[:, -1, :] # becomes (B, C)
             # apply softmax to get probabilities
