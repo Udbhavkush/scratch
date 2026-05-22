@@ -77,13 +77,24 @@ class Head(nn.Module):
         out = wei @ v
         return out
 
+class MultiheadAttention(nn.Module):
+    def __init__(self, num_heads, head_size):
+        super().__init__()
+        # there will be num_heads number of weight matrices here each with a dimension of n_embd*head_size
+        self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+    
+    def forward(self, x):
+        return torch.cat([h(x) for h in self.heads], dim=-1)
+        
+
 class BigramLanguageModel(nn.Module):
     
     def __init__(self):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd) # we are adding an intermediate layer instead of directly taking logits from the embedding table
         self.position_embedding_table = nn.Embedding(block_size, n_embd) # so each block or each time component get its own positional embedding
-        self.sa_head = Head(n_embd)
+        # self.sa_head = Head(n_embd)
+        self.sa_heads = MultiheadAttention(4, n_embd // 4) # basically 4 heads of 8-dimensional self-attention
         self.lm_head = nn.Linear(n_embd, vocab_size) # adding a linear layer
         
     
@@ -93,7 +104,8 @@ class BigramLanguageModel(nn.Module):
         tok_embd = self.token_embedding_table(idx) # (B, T, C)
         pos_embd = self.position_embedding_table(torch.arange(T, device=device)) # T, C. So, for each index, I am getting an embedding that has the information of the position
         x = tok_embd + pos_embd # now x has both the information of identity and position. Although not much useful for bigram but conceptually important
-        x = self.sa_head(x) # self attention head (B, T, C)
+        # x = self.sa_head(x) # self attention head (B, T, C)
+        x = self.sa_heads(x)
         logits = self.lm_head(x) # (B, T, vocab_size)
         if targets is None:
             loss = None
