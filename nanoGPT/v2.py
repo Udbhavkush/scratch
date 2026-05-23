@@ -82,17 +82,21 @@ class MultiheadAttention(nn.Module):
         super().__init__()
         # there will be num_heads number of weight matrices here each with a dimension of n_embd*head_size
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+        self.proj = nn.Linear(n_embd, n_embd) # projection layer that goes back in the pathway
     
     def forward(self, x):
-        return torch.cat([h(x) for h in self.heads], dim=-1)
+        out =  torch.cat([h(x) for h in self.heads], dim=-1)
+        out = self.proj(out)
+        return out
 
 class FeedForward(nn.Module):
     """a simple linear layer followed by a non-linearity or a basic MLP block"""
     def __init__(self, n_embd):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(n_embd, n_embd),
+            nn.Linear(n_embd, 4 * n_embd),
             nn.ReLU(),
+            nn.Linear(4 * n_embd, n_embd), # projection layer
         )
     
     def forward(self, x):
@@ -107,12 +111,11 @@ class Block(nn.Module):
         self.ffwd = FeedForward(n_embd)
     
     def forward(self, x):
-        x = self.sa(x)
-        x = self.ffwd(x)
+        x = x + self.sa(x) # added skip connection here
+        x = x + self.ffwd(x) # added skip connection here
         return x
 
 class BigramLanguageModel(nn.Module):
-    
     def __init__(self):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd) # we are adding an intermediate layer instead of directly taking logits from the embedding table
@@ -192,3 +195,15 @@ for iter in range(max_iters):
 # generate from the model
 context = torch.zeros((1, 1), dtype=torch.long, device=device)
 print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
+
+
+
+# a small note on skip connections (for my understanding and revision later):
+# we have an input x, and we want to learn the function H(x)
+# the input x goes through some transformation and we get F(x)
+# now we add x to this F(x) we got. The reason we are doing this is first to deal with the problem of vanishing gradients.
+# as the network gets deeper, the gradients become smaller, hence vanishing gradient.
+# by adding x, we have an addition block that distributes the gradient equally (direct input x and through F(x))
+# because of this gradient will not get smaller as it goes through F(x) and we would have some gradient value that comes directly from x.
+# Secondly, since, H(x) = F(x) + x, so, F(x) = H(x) - x (This the residual). We have F value by the forward propagation and we need to optimize F(x)
+# now, since we just have to optimize the difference, it becomes much easier for the network to do that as it is much more easier to optimize for values ~ 0. 
