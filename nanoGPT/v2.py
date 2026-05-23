@@ -117,7 +117,7 @@ class Block(nn.Module):
         x = x + self.ffwd(self.ln2(x)) # added skip connection here
         return x
 
-class BigramLanguageModel(nn.Module):
+class GPT(nn.Module):
     def __init__(self):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd) # we are adding an intermediate layer instead of directly taking logits from the embedding table
@@ -174,7 +174,7 @@ class BigramLanguageModel(nn.Module):
         return idx
     
     
-model = BigramLanguageModel()
+model = GPT()
 m = model.to(device)
 optimizer = torch.optim.AdamW(m.parameters(), lr=learning_rate)
 
