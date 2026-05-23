@@ -98,6 +98,19 @@ class FeedForward(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+class Block(nn.Module):
+    """Transformers block: communication (done by self-attention) followed by computation (done by feedforward layer)"""
+    def __init__(self, n_embd, n_head):
+        super().__init__()
+        head_size = n_embd // n_head
+        self.sa = MultiheadAttention(n_head, head_size)
+        self.ffwd = FeedForward(n_embd)
+    
+    def forward(self, x):
+        x = self.sa(x)
+        x = self.ffwd(x)
+        return x
+
 class BigramLanguageModel(nn.Module):
     
     def __init__(self):
@@ -105,8 +118,13 @@ class BigramLanguageModel(nn.Module):
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd) # we are adding an intermediate layer instead of directly taking logits from the embedding table
         self.position_embedding_table = nn.Embedding(block_size, n_embd) # so each block or each time component get its own positional embedding
         # self.sa_head = Head(n_embd)
-        self.sa_heads = MultiheadAttention(4, n_embd // 4) # basically 4 heads of 8-dimensional self-attention
-        self.feedForward = FeedForward(n_embd)
+        # self.sa_heads = MultiheadAttention(4, n_embd // 4) # basically 4 heads of 8-dimensional self-attention
+        # self.feedForward = FeedForward(n_embd)
+        self.blocks = nn.Sequential(
+            Block(n_embd=n_embd, n_head=4),
+            Block(n_embd=n_embd, n_head=4),
+            Block(n_embd=n_embd, n_head=4),
+        )
         self.lm_head = nn.Linear(n_embd, vocab_size) # adding a linear layer
         
     
@@ -117,8 +135,9 @@ class BigramLanguageModel(nn.Module):
         pos_embd = self.position_embedding_table(torch.arange(T, device=device)) # T, C. So, for each index, I am getting an embedding that has the information of the position
         x = tok_embd + pos_embd # now x has both the information of identity and position. Although not much useful for bigram but conceptually important
         # x = self.sa_head(x) # self attention head (B, T, C)
-        x = self.sa_heads(x)
-        x = self.feedForward(x)  # (B, T, C)
+        # x = self.sa_heads(x)
+        # x = self.feedForward(x)  # (B, T, C)
+        x = self.blocks(x)
         logits = self.lm_head(x) # (B, T, vocab_size)
         if targets is None:
             loss = None
