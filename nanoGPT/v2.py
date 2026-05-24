@@ -66,7 +66,7 @@ class Head(nn.Module):
         B, T, C = x.shape
         
         k = self.key(x)  # B, T, C
-        q = self.key(x)  # B, T, C
+        q = self.query(x)  # B, T, C
         d = k.shape[-1]
         # dot product or basically matrix multiplication
         wei = q @ k.transpose(-2, -1) * d**-0.5  # B, T, T
