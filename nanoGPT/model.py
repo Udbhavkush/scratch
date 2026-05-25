@@ -54,39 +54,30 @@ def estimate_loss():
     return out
     
 
-class Head(nn.Module):
-    def __init__(self, head_size):
+class CausalSelfAttention(nn.Module):
+    def __init__(self, num_heads, head_size):
         super().__init__()
-        self.key = nn.Linear(n_embd, head_size, bias=False)
-        self.query = nn.Linear(n_embd, head_size, bias=False)
-        self.value = nn.Linear(n_embd, head_size, bias=False)
-        self.register_buffer('tril', torch.tril(torch.ones((block_size, block_size)))) # we user register_buffer when we don't want to add a class variable as a parameter of the model
+        # Created a new variable called c_attn (causal attention). As input is n_embd, output size would 3 * head_size for K, Q, V
+        self.c_attn = nn.Linear(n_embd, 3 * n_embd, bias=False)
+        self.proj = nn.Linear(n_embd, n_embd) # projection layer that goes back in the pathway
+        self.head_size = head_size
+        self.num_heads = num_heads
+        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)).view(1, 1, block_size, block_size))
     
     def forward(self, x):
         B, T, C = x.shape
+        x = self.c_attn(x) # applied a linear layer to fit the shape we desire as per head_size
+        q, k, v = x.split(n_embd, dim=2) # since, we want to split on the channel dimension
+        q = q.view(B, T, self.num_heads, self.head_size).transpose(1, 2) # (B, T, nh, head_size) => (B, nh, T, head_size)
+        k = k.view(B, T, self.num_heads, self.head_size).transpose(1, 2)
+        v = v.view(B, T, self.num_heads, self.head_size).transpose(1, 2)
         
-        k = self.key(x)  # B, T, C
-        q = self.query(x)  # B, T, C
-        d = k.shape[-1]
-        # dot product or basically matrix multiplication
-        wei = q @ k.transpose(-2, -1) * d**-0.5  # B, T, T
-        wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))  # B, T, T
-        wei = F.softmax(wei, dim=-1)
-        # perform weighted aggregation of the values
-        v = self.value(x)
-        out = wei @ v
-        return out
-
-class MultiheadAttention(nn.Module):
-    def __init__(self, num_heads, head_size):
-        super().__init__()
-        # there will be num_heads number of weight matrices here each with a dimension of n_embd*head_size
-        self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
-        self.proj = nn.Linear(n_embd, n_embd) # projection layer that goes back in the pathway
-    
-    def forward(self, x):
-        out =  torch.cat([h(x) for h in self.heads], dim=-1)
-        out = self.proj(out)
+        att = q @ k.transpose(-2, -1) * (self.head_size ** (-0.5))
+        att = att.masked_fill(self.tril[:, :, :T, :T] == 0, float("-inf"))
+        att = F.softmax(att, dim=-1)
+        att = att @ v # (B, nh, T, T) @ (B, nh, T, head_size) => (B, nh, T, head_size)
+        att = att.transpose(1, 2).contiguous().view(B, T, C) # we have to use contiguous() to make the memory in tensors so that view() can work properly
+        out = self.proj(att)
         return out
 
 class FeedForward(nn.Module):
@@ -107,7 +98,7 @@ class Block(nn.Module):
     def __init__(self, n_embd, n_head):
         super().__init__()
         head_size = n_embd // n_head
-        self.sa = MultiheadAttention(n_head, head_size)
+        self.sa = CausalSelfAttention(n_head, head_size)
         self.ffwd = FeedForward(n_embd)
         self.ln1 = nn.LayerNorm(n_embd)  # normalizes at token level
         self.ln2 = nn.LayerNorm(n_embd)
@@ -122,9 +113,6 @@ class GPT(nn.Module):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd) # we are adding an intermediate layer instead of directly taking logits from the embedding table
         self.position_embedding_table = nn.Embedding(block_size, n_embd) # so each block or each time component get its own positional embedding
-        # self.sa_head = Head(n_embd)
-        # self.sa_heads = MultiheadAttention(4, n_embd // 4) # basically 4 heads of 8-dimensional self-attention
-        # self.feedForward = FeedForward(n_embd)
         self.blocks = nn.Sequential(
             Block(n_embd=n_embd, n_head=4),
             Block(n_embd=n_embd, n_head=4),
@@ -140,9 +128,6 @@ class GPT(nn.Module):
         tok_embd = self.token_embedding_table(idx) # (B, T, C)
         pos_embd = self.position_embedding_table(torch.arange(T, device=device)) # T, C. So, for each index, I am getting an embedding that has the information of the position
         x = tok_embd + pos_embd # now x has both the information of identity and position. Although not much useful for bigram but conceptually important
-        # x = self.sa_head(x) # self attention head (B, T, C)
-        # x = self.sa_heads(x)
-        # x = self.feedForward(x)  # (B, T, C)
         x = self.blocks(x)
         logits = self.lm_head(x) # (B, T, vocab_size)
         if targets is None:
@@ -198,8 +183,6 @@ for iter in range(max_iters):
 # generate from the model
 context = torch.zeros((1, 1), dtype=torch.long, device=device)
 print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
-
-
 
 # a small note on skip connections (for my understanding and revision later):
 # we have an input x, and we want to learn the function H(x)
