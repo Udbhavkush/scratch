@@ -206,6 +206,8 @@ class GPT(nn.Module):
     
 model = GPT()
 m = model.to(device)
+total_params = sum(p.numel() for p in model.parameters())
+print(f"Total parameters: {total_params:,}")
 optimizer = torch.optim.AdamW(m.parameters(), lr=learning_rate)
 
 for iter in range(max_iters):
