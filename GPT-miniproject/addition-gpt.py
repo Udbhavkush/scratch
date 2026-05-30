@@ -18,7 +18,7 @@ decode = lambda l: ''.join([itos[i] for i in l])
 # =============== HYPERPARAMETERS ===============
 BATCH_SIZE = 32
 BLOCK_SIZE = 8
-MAX_ITERS = 1000
+MAX_ITERS = 5000
 EVAL_INTERVAL = 300
 LR = 1e-3
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -30,7 +30,7 @@ N_EMBD = 32
 def estimate_loss():
     out = {}
     model.eval()
-    for split in ['train', 'val']:
+    for split in ['train' ,'val']:
         losses = torch.zeros(EVAL_ITERS)
         for k in range(EVAL_ITERS):
             X, Y = get_batch(BATCH_SIZE)
@@ -55,7 +55,7 @@ def data_generator():
     encoded_sum = encode(str(int(a)+int(b))[::-1])
     if len(encoded_sum) == 1:
         encoded_sum = encode('0') + encoded_sum
-    Y = [-1] * maskLen + encoded_sum
+    Y = [-1] * (maskLen - 1) + encoded_sum + [-1]
     return X, Y
 
 def get_batch(size):
@@ -170,7 +170,7 @@ class GPT(nn.Module):
             # apply softmax to get probabilities
             probs = F.softmax(logits, dim=-1) # (B, C)
             # sample from the distribution
-            idx_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
+            idx_next = torch.argmax(probs, dim=-1, keepdim=True)  # (B, 1) # we need definitive answer here (deterministic). So better to use argmax instead of samping 
             # append sampled index to the running sequence
             idx = torch.cat((idx, idx_next), dim=1) # (B, T+1)
         
@@ -195,10 +195,9 @@ for iter in range(MAX_ITERS):
     loss.backward()
     
     optimizer.step()
-    
 
 # %%
-Xtest, ytest = get_batch(10)
+Xtest, ytest = get_batch(50)
 
 # %%
 # need to write the code to inference the model
@@ -211,7 +210,7 @@ for i in range(B):
     pre = decode(output[i][:-2].tolist())
     post = decode(output[i][-2:].tolist())[::-1]
     print(pre+post)
-    gt = decode(ytest[i][-2:].tolist())[::-1]
+    gt = decode(ytest[i][-3:-1].tolist())[::-1]
     if gt == post:
         correct += 1
 
