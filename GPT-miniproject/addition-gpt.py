@@ -1,3 +1,10 @@
+"""A mini-project that just takes an input of string of addition of two numbers and gives the output
+   The project just deals with two 2-digit numbers (between 0 and 20) and gives their sum probabilistically.
+   The main aim of this project was to understand the GPT architecture more and apply it to some problem without
+   using AI. Everything here in this file is hand-coded. No help of AI has been taken. The idea to solve this problem
+   is from Andrej Karpathy's video where he suggested solving this problem in the video description. The concept and 
+   some code has been learnt/taken from his video and Github.
+"""
 # %%
 import torch
 import torch.nn as nn
